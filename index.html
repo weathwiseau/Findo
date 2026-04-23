@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Findo — Find your financial path</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; }
+    body { background: #f5f0e8; font-family: 'DM Sans', sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    /* ── Colours ── */
+    const C = {
+      bg:"#f5f0e8", surface:"#fffefb", surfaceAlt:"#ede8de", border:"#ddd7cb",
+      ink:"#1c1a16", inkMid:"#5a5347", inkLight:"#9c9285",
+      navy:"#1a2744", navyMid:"#243460", navyLight:"#e8ecf5",
+      terra:"#c95b2a", terraLight:"#faeee8", terraPale:"#fdf6f2",
+      moss:"#3d5c3a", mossLight:"#e8f0e7",
+      gold:"#b8860b", goldLight:"#fdf4dc",
+    };
+
+    /* ── YOUR API KEY GOES HERE ── */
+    const API_KEY = "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";
+
+    /* ── Helpers ── */
+    const fmt = n => `$${Math.round(n).toLocaleString("en-AU")}`;
+    const pct = (a,b) => b>0 ? ((a/b)*100).toFixed(1) : "0";
+
+    /* ── System prompt ── */
+    const SYSTEM = `You are Finn, Findo's warm personal financial advisor — 15 years helping everyday Australians. You speak like a trusted friend who knows money: direct, empathetic, never robotic.
+
+Findo is FREE. Revenue comes from transparent referral partnerships. When recommending a product that earns a referral fee, disclose: "Full transparency — if you sign up through Findo, we earn a small referral. I'd give you the same advice either way."
+
+AUSTRALIAN PRODUCTS: ING Savings Maximiser (5.50% p.a.), Ubank (5.10%), Macquarie (5.35%), Raiz (from $5), Spaceship Voyager (zero fees under $5k), Stake ($0 brokerage), Pearler, Vanguard ETFs, BetaShares A200, Lendi (mortgage refinance), CompareClub (insurance), ShopBack (cashback), Marley Spoon ($7.49/serving), Energy Locals.
+
+Write in flowing prose paragraphs. Use emoji section headers. Be specific with AUD amounts. End with ASIC disclaimer.`;
+
+    /* ── Affiliate deals ── */
+    const DEALS = [
+      { id:"ing",     name:"ING Savings Maximiser", logo:"🏦", rate:"5.50% p.a.", tag:"Best Rate",    commission:"$80",  url:"https://www.ing.com.au/savings/savings-maximiser.html",    cat:"savings",   urgency:"high",   desc:"Australia's top ongoing savings rate. No monthly fees, no conditions." },
+      { id:"raiz",    name:"Raiz Invest",            logo:"🌱", rate:"from $5",    tag:"Beginner",    commission:"$25",  url:"https://raizinvest.com.au",                                 cat:"investing", urgency:"medium", desc:"Round up spare change into ETFs automatically. Perfect for starters." },
+      { id:"spaceship",name:"Spaceship Voyager",     logo:"🚀", rate:"from $1",    tag:"Zero Fees",   commission:"$30",  url:"https://www.spaceship.com.au",                             cat:"investing", urgency:"low",    desc:"Zero fees under $5k. Invest in global companies from $1." },
+      { id:"balance", name:"0% Balance Transfer",    logo:"💳", rate:"0% 24mo",    tag:"Urgent Fix",  commission:"$45",  url:"https://www.finder.com.au/balance-transfer-credit-cards",  cat:"debt",      urgency:"high",   desc:"Move credit card debt to 0% interest. Finder compares 30+ offers free." },
+      { id:"lendi",   name:"Lendi — Refinance",      logo:"🏠", rate:"Save $3k+",  tag:"Big Saving",  commission:"$800", url:"https://www.lendi.com.au",                                  cat:"debt",      urgency:"medium", desc:"Free comparison of 35+ lenders. Could save thousands on your mortgage." },
+      { id:"compare", name:"CompareClub",            logo:"🛡️", rate:"Up to 40% off",tag:"Quick Win", commission:"$55",  url:"https://compareclub.com.au",                               cat:"insurance", urgency:"low",    desc:"Compare car, home & health insurance in minutes. Completely free." },
+      { id:"energy",  name:"Energy Locals",          logo:"⚡", rate:"$300–600/yr", tag:"Easy Switch", commission:"$40",  url:"https://www.energylocals.com.au",                          cat:"energy",    urgency:"medium", desc:"Switch energy providers in 5 minutes. No disruption to service." },
+      { id:"marley",  name:"Marley Spoon",           logo:"🥗", rate:"$120 off",   tag:"Cut Dining",  commission:"$25",  url:"https://www.marleyspoon.com.au",                           cat:"groceries", urgency:"medium", desc:"Meal kits from $7.49/serving — replaces expensive takeaway nights." },
+      { id:"shopback",name:"ShopBack Cashback",      logo:"🛒", rate:"Up to 15%",  tag:"Free Money",  commission:"$15",  url:"https://www.shopback.com.au",                              cat:"groceries", urgency:"low",    desc:"Earn cashback at Woolworths, Coles & 2,000+ Aussie stores." },
+    ];
+
+    function matchDeals(m) {
+      const out = [];
+      if (m.savings < m.totalExpenses*3) out.push({...DEALS[0], reason:`Your savings earn near-zero. At ${fmt(m.savings)}, switching to ING earns ~${fmt(m.savings*.055/12)}/month in interest — free.`});
+      if (m.surplus > 150)              out.push({...DEALS[1], reason:`You have ${fmt(m.surplus)}/month surplus. Even $50/week in Raiz compounds to ~${fmt(50*52*5*1.08)} over 5 years.`});
+      if (m.surplus > 300)              out.push({...DEALS[2], reason:"Spaceship has zero fees under $5k — ideal while you build your first investment pool."});
+      if (m.debt > 2000)                out.push({...DEALS[3], reason:`You have ${fmt(m.debt)} in debt. At 20%+ interest that's ~${fmt(m.debt*.2/12)}/month in charges you can eliminate.`});
+      if (m.rent > 2400)                out.push({...DEALS[4], reason:`At ${fmt(m.rent)}/month housing, shaving 0.5% off a $500k mortgage saves ~$2,500/year.`});
+      out.push({...DEALS[5], reason:"Most Australians haven't compared insurance in 2+ years. 10 minutes can save $300–800 with no change in cover."});
+      if (m.utils > 220)                out.push({...DEALS[6], reason:`At ${fmt(m.utils)}/month utilities, switching providers could save $300–600/year.`});
+      if (m.dining > 250)               out.push({...DEALS[7], reason:`You're spending ${fmt(m.dining)}/month dining out. Meal kits at $7.49/serving could replace several takeaways weekly.`});
+      out.push({...DEALS[8], reason:"Earn automatic cashback on your existing Woolworths and Coles shops. Zero behaviour change required."});
+      return out.slice(0,7);
+    }
+
+    function computeMetrics(d) {
+      const income=parseFloat(d.income)||0, rent=parseFloat(d.rent)||0;
+      const groceries=parseFloat(d.groceries)||0, dining=parseFloat(d.dining)||0;
+      const transport=parseFloat(d.transport)||0, subs=parseFloat(d.subscriptions)||0;
+      const utils=parseFloat(d.utilities)||0, other=parseFloat(d.other)||0;
+      const debt=parseFloat(d.debt)||0, savings=parseFloat(d.savings)||0;
+      const superBal=parseFloat(d.super_bal)||0;
+      const totalExpenses=rent+groceries+dining+transport+subs+utils+other;
+      const surplus=income-totalExpenses;
+      const savingsRate=income>0?(surplus/income)*100:0;
+      const leaks=[
+        {label:"Rent/Mortgage",  value:rent,      bm:30, icon:"🏠", sev:rent/income>.40?"high":rent/income>.30?"mid":"ok"},
+        {label:"Dining Out",     value:dining,    bm:8,  icon:"🍽️", sev:dining/income>.12?"high":dining/income>.08?"mid":"ok"},
+        {label:"Subscriptions",  value:subs,      bm:3,  icon:"📱", sev:subs/income>.05?"high":subs/income>.03?"mid":"ok"},
+        {label:"Transport",      value:transport, bm:10, icon:"🚗", sev:transport/income>.15?"high":transport/income>.10?"mid":"ok"},
+        {label:"Utilities",      value:utils,     bm:5,  icon:"⚡", sev:utils/income>.08?"high":utils/income>.05?"mid":"ok"},
+      ];
+      let score=100;
+      if(savingsRate<10)score-=25; else if(savingsRate<20)score-=10;
+      if(debt>income*3)score-=20; else if(debt>income)score-=10;
+      if(rent/income>.4)score-=15; else if(rent/income>.3)score-=7;
+      if(dining/income>.12)score-=10; if(subs/income>.05)score-=5;
+      if(savings<income)score-=10;
+      return {income,rent,groceries,dining,transport,subs,utils,other,debt,savings,superBal,
+        totalExpenses,surplus,savingsRate,leaks,score:Math.max(20,Math.min(100,score)),
+        emergencyTarget:totalExpenses*3, emergencyMonths:totalExpenses>0?(savings/totalExpenses).toFixed(1):0};
+    }
+
+    /* ── Styles ── */
+    const S = {
+      card:  {background:C.surface, border:`1px solid ${C.border}`, borderRadius:20, padding:20, marginBottom:12},
+      field: {width:"100%", background:C.surfaceAlt, border:`1.5px solid ${C.border}`, borderRadius:12, padding:"12px 16px", fontFamily:"'DM Sans',sans-serif", fontSize:15, color:C.ink, outline:"none"},
+      btnNavy: {display:"block", width:"100%", padding:14, background:C.navy, color:"#fff", border:"none", borderRadius:14, fontFamily:"'DM Sans',sans-serif", fontSize:15, fontWeight:600, cursor:"pointer"},
+      chip: (bg, color) => ({display:"inline-block", padding:"3px 10px", borderRadius:999, fontSize:10, fontFamily:"'DM Mono',monospace", background:bg, color}),
+      barTrack: {background:C.surfaceAlt, borderRadius:999, height:6},
+    };
+
+    const tag = (text, bg, color) => <span style={S.chip(bg,color)}>{text}</span>;
+
+    /* ── API call ── */
+    async function callFinn(messages, system) {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": API_KEY,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-allow-browser": "true"
+        },
+        body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000, system: system||SYSTEM, messages })
+      });
+      const data = await res.json();
+      return data.content?.map(b=>b.text||"").join("") || "Something went wrong. Please try again.";
+    }
+
+    /* ══════════════════════════════════════
+       ONBOARDING
+    ══════════════════════════════════════ */
+    function Onboarding({onDone}) {
+      const [step, setStep] = useState(0);
+      const [d, setD] = useState({name:"",income:"",rent:"",groceries:"",dining:"",transport:"",subscriptions:"",utilities:"",other:"",debt:"",savings:"",super_bal:"",goal:"",timeline:""});
+      const steps = [
+        {key:"name",         label:"What's your first name?",                         ph:"e.g. Sarah",          type:"text"},
+        {key:"income",       label:"Monthly take-home income (AUD after tax)",         ph:"e.g. 6,500",          type:"number"},
+        {key:"rent",         label:"Rent or mortgage per month",                       ph:"e.g. 2,100",          type:"number"},
+        {key:"groceries",    label:"Monthly grocery spend",                            ph:"e.g. 600",            type:"number"},
+        {key:"dining",       label:"Cafes, restaurants & takeaway per month",          ph:"e.g. 350",            type:"number"},
+        {key:"transport",    label:"Transport (car, petrol, Uber, PT) per month",      ph:"e.g. 280",            type:"number"},
+        {key:"subscriptions",label:"All subscriptions total (Netflix, gym, etc.)",     ph:"e.g. 120",            type:"number"},
+        {key:"utilities",    label:"Utilities + phone per month",                      ph:"e.g. 220",            type:"number"},
+        {key:"other",        label:"Other spending (clothes, hobbies, misc)",          ph:"e.g. 400",            type:"number"},
+        {key:"debt",         label:"Total debt (credit cards + personal loans)",       ph:"e.g. 14,000",         type:"number"},
+        {key:"savings",      label:"Current savings & investments (AUD)",              ph:"e.g. 3,200",          type:"number"},
+        {key:"super_bal",    label:"Approximate superannuation balance",               ph:"e.g. 45,000",         type:"number"},
+        {key:"goal",         label:"Your #1 financial goal",                           ph:"Buy a home, retire early…", type:"text"},
+        {key:"timeline",     label:"When do you want to reach it?",                    ph:"e.g. 3 years",        type:"text"},
+      ];
+      const cur = steps[step]; const isLast = step===steps.length-1;
+      const runTotal = ["rent","groceries","dining","transport","subscriptions","utilities","other"].reduce((s,k)=>s+(parseFloat(d[k])||0),0);
+      const next = () => { if(!d[cur.key]) return; isLast ? onDone(d) : setStep(s=>s+1); };
+
+      return (
+        <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"center",padding:"28px 20px",background:C.bg}}>
+          <div style={{marginBottom:24}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+              <div style={{width:40,height:40,borderRadius:12,background:C.navy,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>🔍</div>
+              <div>
+                <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:32,fontWeight:700,color:C.navy,letterSpacing:"-1px",lineHeight:1}}>findo</div>
+                <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:C.terra,letterSpacing:2,textTransform:"uppercase"}}>find your financial path · au</div>
+              </div>
+              <span style={{...S.chip(C.mossLight,C.moss),marginLeft:"auto"}}>FREE</span>
+            </div>
+            <div style={{fontSize:13,color:C.inkMid,fontStyle:"italic",lineHeight:1.65,marginTop:10,borderLeft:`3px solid ${C.terra}`,paddingLeft:12}}>
+              "Hi, I'm Finn — your free AI financial advisor. Let me find where your money is leaking and show you exactly what to do."
+            </div>
+          </div>
+
+          <div style={S.barTrack}>
+            <div style={{height:6,borderRadius:999,background:C.terra,width:`${((step+1)/steps.length)*100}%`,transition:"width .3s"}}/>
+          </div>
+          <div style={{marginBottom:20}}/>
+
+          <div style={{...S.card,padding:26}}>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:C.inkLight,marginBottom:10,textTransform:"uppercase",letterSpacing:1}}>{step+1} / {steps.length}</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:600,marginBottom:20,lineHeight:1.3,color:C.navy}}>{cur.label}</div>
+            <input style={S.field} type={cur.type} placeholder={cur.ph}
+              value={d[cur.key]} onChange={e=>setD(p=>({...p,[cur.key]:e.target.value}))}
+              onKeyDown={e=>e.key==="Enter"&&next()} autoFocus/>
+            {step>1&&step<9&&<div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:C.inkLight,marginTop:10}}>Running total: {fmt(runTotal)}/mo</div>}
+          </div>
+
+          <button style={S.btnNavy} onClick={next} disabled={!d[cur.key]}>{isLast?"Meet Finn →":"Continue →"}</button>
+          {step>0&&<button onClick={()=>setStep(s=>s-1)} style={{background:"none",border:"none",color:C.inkLight,fontSize:13,marginTop:12,cursor:"pointer"}}>← Back</button>}
+          <div style={{fontSize:11,color:C.inkLight,marginTop:18,textAlign:"center",fontFamily:"'DM Mono',monospace"}}>Free forever · Referral fees disclosed · General advice only</div>
+        </div>
+      );
+    }
+
+    /* ══════════════════════════════════════
+       HOME
+    ══════════════════════════════════════ */
+    function Home({d, m, onNav}) {
+      const sc=m.score, deals=matchDeals(m);
+      const scColor=sc>=75?C.moss:sc>=50?C.gold:C.terra;
+      return (
+        <div style={{padding:"20px 16px 90px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
+            <div>
+              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:700,color:C.navy}}>G'day, {d.name}</div>
+              <div style={{fontSize:12,color:C.inkMid,marginTop:3,fontStyle:"italic"}}>{d.goal} · {d.timeline}</div>
+            </div>
+            <div style={{width:40,height:40,borderRadius:12,background:C.navy,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🔍</div>
+          </div>
+
+          {/* Score */}
+          <div style={{...S.card,background:`linear-gradient(135deg,${C.navy}f0,${C.navyMid})`,border:"none",padding:24,marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div>
+                <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"rgba(255,255,255,.5)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:6}}>Financial Health</div>
+                <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:60,fontWeight:700,color:sc>=75?"#6ee7a0":sc>=50?"#fbbf24":"#f87171",lineHeight:1}}>
+                  {sc}<span style={{fontSize:18,color:"rgba(255,255,255,.35)",fontWeight:400}}>/100</span>
+                </div>
+                <div style={{fontSize:13,color:"rgba(255,255,255,.65)",marginTop:6}}>{sc>=75?"Strong — time to build":"Making progress — real gains ahead"}</div>
+              </div>
+              <span style={{background:"rgba(255,255,255,.12)",borderRadius:999,padding:"3px 10px",fontFamily:"'DM Mono',monospace",fontSize:10,color:"rgba(255,255,255,.7)"}}>FREE</span>
+            </div>
+          </div>
+
+          {/* Metrics */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+            {[
+              {label:"Monthly Surplus",val:fmt(m.surplus),      color:m.surplus>=0?C.moss:C.terra, sub:m.surplus>=0?"to redirect":"over budget"},
+              {label:"Savings Rate",   val:`${Math.max(0,m.savingsRate).toFixed(1)}%`, color:m.savingsRate>=20?C.moss:m.savingsRate>=10?C.gold:C.terra, sub:"target: 20%+"},
+              {label:"Total Debt",     val:fmt(m.debt),          color:m.debt===0?C.moss:C.gold,  sub:m.debt>0?`${(m.debt/m.income).toFixed(1)}× income`:"debt free 🎉"},
+              {label:"Emergency Fund", val:`${m.emergencyMonths} mo`, color:parseFloat(m.emergencyMonths)>=3?C.moss:C.gold, sub:"target: 3 months"},
+            ].map(item=>(
+              <div key={item.label} style={{...S.card,padding:14,margin:0}}>
+                <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:C.inkLight,textTransform:"uppercase",letterSpacing:.8,marginBottom:6}}>{item.label}</div>
+                <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:item.color,lineHeight:1,fontWeight:600}}>{item.val}</div>
+                <div style={{fontSize:11,color:C.inkLight,marginTop:4}}>{item.sub}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Finn note */}
+          <div style={{...S.card,borderLeft:`4px solid ${C.terra}`}}>
+            <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:12}}>
+              <div style={{width:34,height:34,borderRadius:10,background:C.terraLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🧑</div>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:15,fontWeight:600,color:C.navy}}>Finn · Findo Advisor</div>
+              </div>
+              {tag("Free service", C.mossLight, C.moss)}
+            </div>
+            <div style={{fontSize:13,color:C.inkMid,lineHeight:1.75,fontStyle:"italic"}}>
+              {m.surplus<0
+                ? `${d.name}, expenses are outpacing income by ${fmt(Math.abs(m.surplus))}/month. That's job one.`
+                : `You have ${fmt(m.surplus)}/month to work with. I've found ${deals.length} deals matched to your exact situation — let's put that surplus to work.`
+              }
+            </div>
+          </div>
+
+          {/* Nav */}
+          {[
+            {icon:"🔍", label:"Find my leaks",           sub:"Full breakdown vs benchmarks",                 tab:"leaks"},
+            {icon:"🎯", label:`${deals.length} matched deals`, sub:"Products matched to your numbers — disclosed", tab:"deals"},
+            {icon:"📋", label:"Get my action plan",       sub:"Finn's personalised 4-week roadmap",            tab:"plan"},
+            {icon:"💬", label:"Ask Finn anything",        sub:"AI advisor who knows your profile",             tab:"chat"},
+          ].map(a=>(
+            <button key={a.tab} onClick={()=>onNav(a.tab)}
+              style={{display:"flex",alignItems:"center",gap:14,width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:"13px 16px",cursor:"pointer",marginBottom:8,textAlign:"left"}}>
+              <span style={{fontSize:22}}>{a.icon}</span>
+              <span style={{flex:1}}>
+                <span style={{display:"block",fontSize:14,fontWeight:500,color:C.ink}}>{a.label}</span>
+                <span style={{display:"block",fontSize:12,color:C.inkLight,marginTop:1}}>{a.sub}</span>
+              </span>
+              <span style={{color:C.inkLight}}>→</span>
+            </button>
+          ))}
+
+          <div style={{background:C.navyLight,border:`1px solid ${C.navy}22`,borderRadius:14,padding:"12px 15px",display:"flex",gap:10,alignItems:"flex-start",marginTop:4}}>
+            <span style={{fontSize:15,flexShrink:0}}>ℹ️</span>
+            <div style={{fontSize:12,color:C.navy,lineHeight:1.65}}>
+              <strong>How Findo stays free:</strong> We earn a referral fee when you choose recommended products. Finn always discloses this and only recommends what matches your situation.
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    /* ══════════════════════════════════════
+       LEAKS
+    ══════════════════════════════════════ */
+    function Leaks({d, m, onNav}) {
+      const pot = m.leaks.filter(l=>l.sev!=="ok").reduce((s,l)=>s+Math.max(0,(l.value-m.income*l.bm/100)*.5),0);
+      const sevColor = s => s==="high"?C.terra:s==="mid"?C.gold:C.moss;
+      return (
+        <div style={{padding:"20px 16px 90px"}}>
+          <div style={{marginBottom:16}}>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:700,color:C.navy}}>Expense Leaks</div>
+            <div style={{fontSize:13,color:C.inkMid,marginTop:2,fontStyle:"italic"}}>Finn's full breakdown</div>
+          </div>
+
+          {pot>50&&(
+            <div style={{...S.card,background:C.mossLight,border:`1px solid ${C.moss}44`}}>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:C.moss,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Monthly savings opportunity</div>
+              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:38,color:C.moss,fontWeight:700}}>~{fmt(pot)}<span style={{fontSize:16,color:C.moss+"99"}}>/mo</span></div>
+              <div style={{fontSize:12,color:C.moss,marginTop:4}}>~{fmt(pot*12)}/year redirected to your goals</div>
+            </div>
+          )}
+
+          <div style={S.card}>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:C.inkLight,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Income vs Spending</div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:C.inkMid,marginBottom:6}}>
+              <span>Spending: {fmt(m.totalExpenses)}</span><span>Income: {fmt(m.income)}</span>
+            </div>
+            <div style={S.barTrack}>
+              <div style={{height:6,borderRadius:999,width:`${Math.min(100,(m.totalExpenses/m.income)*100)}%`,background:m.totalExpenses/m.income>.9?C.terra:m.totalExpenses/m.income>.8?C.gold:C.moss,transition:"width .8s"}}/>
+            </div>
+            <div style={{fontSize:11,color:C.inkLight,marginTop:6}}>{pct(m.totalExpenses,m.income)}% of income · {fmt(Math.abs(m.surplus))} {m.surplus>=0?"remaining":"over budget"}</div>
+          </div>
+
+          <div style={S.card}>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:C.inkLight,textTransform:"uppercase",letterSpacing:1,marginBottom:14}}>Spending by Category</div>
+            {[
+              {label:"Rent/Mortgage",value:m.rent,bm:30,icon:"🏠"},
+              {label:"Groceries",    value:m.groceries,bm:12,icon:"🛒"},
+              {label:"Dining Out",   value:m.dining,bm:8,icon:"🍽️"},
+              {label:"Transport",    value:m.transport,bm:10,icon:"🚗"},
+              {label:"Subscriptions",value:m.subs,bm:3,icon:"📱"},
+              {label:"Utilities",    value:m.utils,bm:5,icon:"⚡"},
+              {label:"Other",        value:m.other,bm:8,icon:"🛍️"},
+            ].map(item=>{
+              const ap = m.income>0?(item.value/m.income)*100:0;
+              const over = ap>item.bm;
+              return (
+                <div key={item.label} style={{marginBottom:14}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                    <span style={{fontSize:13}}>{item.icon} {item.label}</span>
+                    <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:over?C.terra:C.moss}}>
+                      {fmt(item.value)} <span style={{color:C.inkLight}}>({ap.toFixed(0)}%)</span>
+                    </span>
+                  </div>
+                  <div style={S.barTrack}>
+                    <div style={{height:4,borderRadius:999,width:`${Math.min(100,(ap/Math.max(ap,item.bm))*100)}%`,background:ap>item.bm*1.4?C.terra:over?C.gold:C.moss}}/>
+                  </div>
+                  <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:C.inkLight,marginTop:2}}>benchmark: {item.bm}% · {over?`+${(ap-item.bm).toFixed(0)}% above`:"✓ on track"}</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {m.leaks.map(l=>(
+            <div key={l.label} style={{...S.card,borderLeft:`4px solid ${sevColor(l.sev)}`,padding:"14px 16px",margin:"0 0 10px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:16,fontWeight:600}}>{l.icon} {l.label}</div>
+                <span style={S.chip(l.sev==="high"?C.terraLight:l.sev==="mid"?C.goldLight:C.mossLight, l.sev==="high"?C.terra:l.sev==="mid"?C.gold:C.moss)}>
+                  {l.sev==="high"?"Urgent":l.sev==="mid"?"Watch this":"On track"}
+                </span>
+              </div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:12,marginBottom:8}}>{fmt(l.value)}/mo · {pct(l.value,m.income)}% <span style={{color:C.inkLight}}>(benchmark: {l.bm}%)</span></div>
+              <div style={{fontSize:13,color:C.inkMid,fontStyle:"italic",lineHeight:1.65}}>
+                "{l.sev==="high"?`This is a significant leak — ${(pct(l.value,m.income)-l.bm).toFixed(0)}% above benchmark.`:l.sev==="mid"?"Slightly over — worth addressing.":"Within healthy range."}"
+              </div>
+            </div>
+          ))}
+
+          <button onClick={()=>onNav("deals")} style={{...S.btnNavy,marginTop:4}}>See Finn's matched deals →</button>
+        </div>
+      );
+    }
+
+    /* ══════════════════════════════════════
+       DEALS
+    ══════════════════════════════════════ */
+    function Deals({d, m}) {
+      const deals = matchDeals(m);
+      const [open, setOpen] = useState(null);
+      const catColor = {savings:C.moss, investing:C.navy, debt:C.terra, insurance:C.gold, energy:C.gold, groceries:C.moss};
+      const urgLabel = {high:"🔴 Act now", medium:"🟡 This month", low:"🟢 Quick win"};
+      return (
+        <div style={{padding:"20px 16px 90px"}}>
+          <div style={{marginBottom:12}}>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:700,color:C.navy}}>Your Deals</div>
+            <div style={{fontSize:13,color:C.inkMid,marginTop:2,fontStyle:"italic"}}>Matched by Finn to your exact profile</div>
+          </div>
+          <div style={{background:C.navyLight,border:`1px solid ${C.navy}22`,borderRadius:14,padding:"12px 15px",display:"flex",gap:10,alignItems:"flex-start",marginBottom:14}}>
+            <span style={{fontSize:15,flexShrink:0}}>🤝</span>
+            <div style={{fontSize:12,color:C.navy,lineHeight:1.65}}><strong>Full transparency:</strong> Findo earns a referral fee if you sign up to any product below. This keeps the app free. Finn only surfaces products that match your situation.</div>
+          </div>
+          {deals.map((deal,i)=>{
+            const col = catColor[deal.cat]||C.navy;
+            const isOpen = open===deal.id;
+            return (
+              <div key={deal.id} onClick={()=>setOpen(isOpen?null:deal.id)}
+                style={{background:C.surface,border:`1.5px solid ${isOpen?col:C.border}`,borderRadius:20,padding:"16px",marginBottom:10,cursor:"pointer",borderLeft:`4px solid ${deal.urgency==="high"?C.terra:deal.urgency==="medium"?C.gold:C.moss}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{fontSize:24,lineHeight:1}}>{deal.logo}</div>
+                    <div>
+                      <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:16,fontWeight:600,color:C.navy}}>{deal.name}</div>
+                      <div style={{fontSize:11,color:C.inkLight,fontFamily:"'DM Mono',monospace",marginTop:1}}>{urgLabel[deal.urgency]}</div>
+                    </div>
+                  </div>
+                  <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
+                    <div style={S.chip(deal.cat==="debt"?C.terraLight:C.mossLight, deal.cat==="debt"?C.terra:C.moss)}>{deal.tag}</div>
+                    <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:col,fontWeight:600,marginTop:5}}>{deal.rate}</div>
+                  </div>
+                </div>
+                <div style={{fontSize:13,color:C.inkMid,fontStyle:"italic",lineHeight:1.65,borderTop:`1px solid ${C.border}`,paddingTop:10}}>"{deal.reason}"</div>
+                {isOpen&&(
+                  <div style={{marginTop:12}}>
+                    <div style={{fontSize:13,color:C.ink,lineHeight:1.65,marginBottom:12}}>{deal.desc}</div>
+                    <div style={{background:C.navyLight,borderRadius:10,padding:"8px 12px",marginBottom:12,fontSize:11,color:C.navy}}>💙 Referral disclosure: Findo earns {deal.commission} AUD if you sign up — this is how we stay free.</div>
+                    <a href={deal.url} target="_blank" rel="noopener noreferrer"
+                      style={{display:"block",padding:13,background:C.navy,color:"#fff",borderRadius:12,fontFamily:"'DM Sans',sans-serif",fontSize:14,fontWeight:600,cursor:"pointer",textAlign:"center",textDecoration:"none"}}>
+                      Learn more & apply →
+                    </a>
+                  </div>
+                )}
+                <div style={{fontSize:10,color:C.inkLight,marginTop:8,textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{isOpen?"▲ less":"▼ why Finn recommends this"}</div>
+              </div>
+            );
+          })}
+          <div style={{fontSize:11,color:C.inkLight,marginTop:12,lineHeight:1.7,textAlign:"center",fontStyle:"italic"}}>General advice only · Always read PDS before investing · ASIC disclaimer applies</div>
+        </div>
+      );
+    }
+
+    /* ══════════════════════════════════════
+       PLAN
+    ══════════════════════════════════════ */
+    function Plan({d, m}) {
+      const [plan, setPlan] = useState("");
+      const [loading, setLoading] = useState(false);
+      const [done, setDone] = useState(false);
+      const go = async () => {
+        setLoading(true); setPlan("");
+        const leaks = m.leaks.filter(l=>l.sev!=="ok").map(l=>`${l.label}: ${fmt(l.value)}/mo`).join(", ");
+        const prompt = `Advising ${d.name} in Australia. Income ${fmt(m.income)}/mo, expenses ${fmt(m.totalExpenses)}/mo, surplus ${fmt(m.surplus)}/mo. Savings ${fmt(m.savings)}, debt ${fmt(m.debt)}, super ${fmt(m.superBal)}, savings rate ${m.savingsRate.toFixed(1)}%. Leaks: ${leaks||"none"}. Goal: ${d.goal} in ${d.timeline}. Write as Finn from Findo. Structure: 🔍 What I found · 💰 Savings opportunity · 📅 4-week action plan · 🌱 3-month milestone · 🏆 ${d.timeline} wealth target · ⚡ One thing to do today. Disclose referrals naturally.`;
+        try {
+          const text = await callFinn([{role:"user",content:prompt}]);
+          setPlan(text); setDone(true);
+        } catch { setPlan("⚠️ Connection error. Please try again."); }
+        setLoading(false);
+      };
+      return (
+        <div style={{padding:"20px 16px 90px"}}>
+          <div style={{marginBottom:20}}>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:700,color:C.navy}}>Your Plan</div>
+            <div style={{fontSize:13,color:C.inkMid,marginTop:2,fontStyle:"italic"}}>Finn's personalised roadmap for {d.name}</div>
+          </div>
+          {!done&&!loading&&(
+            <div style={{...S.card,textAlign:"center",padding:44}}>
+              <div style={{fontSize:44,marginBottom:16}}>📋</div>
+              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:C.navy,marginBottom:10}}>Ready for your plan?</div>
+              <div style={{fontSize:13,color:C.inkMid,marginBottom:24,lineHeight:1.75}}>Finn analyses your full picture and writes a specific 4-week plan with daily tasks, AUD targets, and product recommendations — with full disclosure on every referral.</div>
+              <button style={S.btnNavy} onClick={go}>Build my plan with Finn</button>
+            </div>
+          )}
+          {loading&&(
+            <div style={{...S.card,textAlign:"center",padding:52}}>
+              <div style={{fontSize:13,color:C.inkLight,fontFamily:"'DM Mono',monospace"}}>Finn is reviewing your finances…</div>
+            </div>
+          )}
+          {plan&&(
+            <>
+              <div style={{...S.card,borderLeft:`4px solid ${C.terra}`}}>
+                <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16}}>
+                  <div style={{width:34,height:34,borderRadius:10,background:C.terraLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🧑</div>
+                  <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:14,fontWeight:700,color:C.navy}}>Finn's Plan for {d.name}</div>
+                </div>
+                <div style={{fontSize:14,lineHeight:1.88,color:C.ink,whiteSpace:"pre-wrap"}}>{plan}</div>
+              </div>
+              <div style={{fontSize:11,color:C.inkLight,marginTop:8,lineHeight:1.6,textAlign:"center",fontStyle:"italic"}}>General advice only · Referral fees disclosed · Consult an AFSL holder for personal advice</div>
+              <button onClick={go} style={{marginTop:10,width:"100%",background:"none",border:`1.5px solid ${C.border}`,borderRadius:12,padding:"12px",fontFamily:"'DM Sans',sans-serif",fontSize:13,color:C.inkMid,cursor:"pointer"}}>↻ Regenerate</button>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    /* ══════════════════════════════════════
+       CHAT
+    ══════════════════════════════════════ */
+    function Chat({d, m}) {
+      const deals = matchDeals(m);
+      const [msgs, setMsgs] = useState([{role:"assistant",content:`Hey ${d.name}! I've looked at your numbers — income ${fmt(m.income)}/mo, expenses ${fmt(m.totalExpenses)}/mo, leaving ${fmt(m.surplus)} to work with.\n\nI've matched ${deals.length} products to your profile. I'll be upfront about any referral Findo earns on them.\n\nWhat do you want to work on first?`}]);
+      const [input, setInput] = useState("");
+      const [loading, setLoading] = useState(false);
+      const btm = useRef(null);
+      useEffect(()=>{btm.current?.scrollIntoView({behavior:"smooth"})},[msgs,loading]);
+      const send = async () => {
+        if(!input.trim()||loading) return;
+        const msg = input.trim(); setInput("");
+        setMsgs(p=>[...p,{role:"user",content:msg}]); setLoading(true);
+        const ctx = `${d.name}, AU. Income ${fmt(m.income)}/mo, expenses ${fmt(m.totalExpenses)}/mo, surplus ${fmt(m.surplus)}/mo, savings ${fmt(m.savings)}, debt ${fmt(m.debt)}, savings rate ${m.savingsRate.toFixed(1)}%. Goal: ${d.goal} in ${d.timeline}.`;
+        try {
+          const history = msgs.map(m=>({role:m.role,content:m.content}));
+          const text = await callFinn([...history,{role:"user",content:msg}], SYSTEM+"\n\nClient: "+ctx);
+          setMsgs(p=>[...p,{role:"assistant",content:text}]);
+        } catch { setMsgs(p=>[...p,{role:"assistant",content:"Connection issue — please try again."}]); }
+        setLoading(false);
+      };
+      const starters = ["Where's my biggest leak?","What deals match my situation?","How do I pay off debt fastest?","Best first investment for me?","Should I salary sacrifice into super?"];
+      return (
+        <div style={{display:"flex",flexDirection:"column",height:"100vh"}}>
+          <div style={{padding:"14px 16px 12px",borderBottom:`1px solid ${C.border}`,background:C.surface,display:"flex",alignItems:"center",gap:12}}>
+            <div style={{width:38,height:38,borderRadius:10,background:C.terraLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🧑</div>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:17,fontWeight:700,color:C.navy}}>Finn · Findo</div>
+              <div style={{fontSize:11,color:C.terra,fontFamily:"'DM Mono',monospace",display:"flex",alignItems:"center",gap:5}}>
+                <span style={{width:6,height:6,borderRadius:"50%",background:C.terra,display:"inline-block"}}/>Online
+              </div>
+            </div>
+            <span style={S.chip(C.navyLight,C.navy)}>FREE</span>
+          </div>
+          <div style={{flex:1,overflowY:"auto",padding:16,display:"flex",flexDirection:"column",gap:12,background:C.bg}}>
+            {msgs.map((msg,i)=>(
+              <div key={i} style={{display:"flex",flexDirection:"column"}}>
+                {msg.role==="assistant"&&<div style={{fontSize:9,color:C.inkLight,fontFamily:"'DM Mono',monospace",marginBottom:4,letterSpacing:1}}>FINN · FINDO</div>}
+                <div style={msg.role==="user"
+                  ? {background:C.navy,color:"#fff",borderRadius:"20px 20px 4px 20px",padding:"12px 16px",maxWidth:"82%",fontSize:14,lineHeight:1.6,alignSelf:"flex-end"}
+                  : {background:C.surface,border:`1px solid ${C.border}`,borderRadius:"4px 20px 20px 20px",padding:"14px 17px",maxWidth:"93%",fontSize:14,lineHeight:1.78,whiteSpace:"pre-wrap"}
+                }>{msg.content}</div>
+              </div>
+            ))}
+            {loading&&(
+              <div>
+                <div style={{fontSize:9,color:C.inkLight,fontFamily:"'DM Mono',monospace",marginBottom:4}}>FINN · FINDO</div>
+                <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:"4px 20px 20px 20px",padding:"14px 17px",display:"inline-block",fontSize:13,color:C.inkLight}}>Thinking…</div>
+              </div>
+            )}
+            <div ref={btm}/>
+          </div>
+          {msgs.length<=1&&(
+            <div style={{padding:"0 16px 8px",display:"flex",gap:7,flexWrap:"wrap",background:C.bg}}>
+              {starters.map(s=>(
+                <button key={s} onClick={()=>setInput(s)}
+                  style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:999,padding:"6px 13px",fontSize:12,color:C.inkMid,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{s}</button>
+              ))}
+            </div>
+          )}
+          <div style={{padding:"10px 16px 6px",display:"flex",gap:10,borderTop:`1px solid ${C.border}`,background:C.surface}}>
+            <input style={{...S.field,flex:1}} value={input} onChange={e=>setInput(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Ask Finn anything about your money…"/>
+            <button onClick={send} disabled={!input.trim()||loading}
+              style={{background:C.terra,border:"none",borderRadius:10,width:44,height:44,fontSize:18,cursor:"pointer",color:"#fff",flexShrink:0,opacity:!input.trim()||loading?.4:1}}>↑</button>
+          </div>
+          <div style={{background:C.surface,padding:"4px 16px 20px",fontSize:9,color:C.inkLight,textAlign:"center",fontFamily:"'DM Mono',monospace"}}>General advice only · Referral fees disclosed · Not personal financial advice</div>
+        </div>
+      );
+    }
+
+    /* ══════════════════════════════════════
+       APP SHELL
+    ══════════════════════════════════════ */
+    const NAV = [{id:"home",icon:"⌂",label:"HOME"},{id:"leaks",icon:"🔍",label:"LEAKS"},{id:"deals",icon:"🎯",label:"DEALS"},{id:"plan",icon:"📋",label:"PLAN"},{id:"chat",icon:"💬",label:"FINN"}];
+
+    function App() {
+      const [data, setData] = useState(null);
+      const [tab, setTab] = useState("home");
+      if(!data) return <Onboarding onDone={d=>{setData(d);setTab("home");}}/>;
+      const m = computeMetrics(data);
+      return (
+        <div style={{maxWidth:430,margin:"0 auto",minHeight:"100vh",background:C.bg,position:"relative"}}>
+          {tab==="chat" ? <Chat d={data} m={m}/> : (
+            <>
+              <div style={{overflowY:"auto",paddingBottom:70}}>
+                {tab==="home"  && <Home  d={data} m={m} onNav={setTab}/>}
+                {tab==="leaks" && <Leaks d={data} m={m} onNav={setTab}/>}
+                {tab==="deals" && <Deals d={data} m={m}/>}
+                {tab==="plan"  && <Plan  d={data} m={m}/>}
+              </div>
+              <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:C.surface,borderTop:`1px solid ${C.border}`,display:"flex",padding:"7px 0 18px",zIndex:100}}>
+                {NAV.map(n=>(
+                  <button key={n.id} onClick={()=>setTab(n.id)}
+                    style={{flex:1,border:"none",background:"none",cursor:"pointer",padding:"8px 2px 6px",display:"flex",flexDirection:"column",alignItems:"center",gap:3,fontFamily:"'DM Mono',monospace",fontSize:9,letterSpacing:.5,textTransform:"uppercase",color:tab===n.id?C.navy:C.inkLight}}>
+                    <span style={{fontSize:19}}>{n.icon}</span>
+                    <span>{n.label}</span>
+                    <div style={{width:4,height:4,borderRadius:"50%",background:C.terra,opacity:tab===n.id?1:0}}/>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+  </script>
+</body>
+</html>
